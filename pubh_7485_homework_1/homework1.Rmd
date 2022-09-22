@@ -120,31 +120,38 @@ Find the unadjusted average treatment effect, standard error, and 95% confidence
 ## Change group to numeric to calculate proportions
 opt_causal_num <- opt_causal %>%
   mutate(Preg.ended...37.wk_num = fct_recode(Preg.ended...37.wk, "0" = "No ", "1" = "Yes")) %>%
-  mutate(Preg.ended...37.wk_num = as.numeric(as.character(Preg.ended...37.wk_num))
-  )
+  mutate(Preg.ended...37.wk_num = as.numeric(as.character(Preg.ended...37.wk_num)))
 
 ## Unadjusted ATE
 p1 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "T"])
 p0 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "C"])
-p1 -  p0
+p1 - p0
 
 ## Standard error
 n1 <- table(opt_causal_num$Group)[2]
 n0 <- table(opt_causal_num$Group)[1]
-SE <- sqrt(p1*(1 - p1)/n1 + p0*(1 - p0)/n0)
+SE <- sqrt(p1 * (1 - p1) / n1 + p0 * (1 - p0) / n0)
 SE
 
 ## 95% CI
-CI_unadj <- p1 - p0 + c(-1, 1)*qnorm(0.975)*SE
-print(p1 - p0 + c(-1, 1)*qnorm(0.975)*SE, digits = 3)
+CI_unadj <- p1 - p0 + c(-1, 1) * qnorm(0.975) * SE
+print(p1 - p0 + c(-1, 1) * qnorm(0.975) * SE, digits = 3)
 
 # Outcome: Birth weight
-## ATE & SE
-lm_bw <- lm(Birthweight ~ Group, data = opt_causal)
-summary(lm_bw)
+## Unadjusted ATE
+ATE <- (mean(opt_causal$Birthweight[opt_causal$Group == "T"])) - (mean(opt_causal$Birthweight[opt_causal$Group == "C"], na.rm = TRUE))
 
-## 95% CI
-confint(lm_bw, level = 0.95)
+## SE
+SE <- sqrt(
+  (sd(opt_causal$Birthweight[opt_causal$Group == "T"])^2 / n1) +
+    (sd(opt_causal$Birthweight[opt_causal$Group == "C"], na.rm = TRUE)^2 / n0)
+)
+SE
+
+## CI
+opt_causal$Group_rev <- factor(opt_causal$Group, levels = rev(levels(opt_causal$Group)))
+
+t.test(opt_causal$Birthweight ~ opt_causal$Group_rev, conf.level = 0.95, mu = 0, alternative = "two.sided", var.equal = FALSE)
 ```
 
 ## **Question 3:** 
@@ -158,10 +165,10 @@ imp_med <- function(x) {
 }
 
 # Functions to impute missing values in categorical variables
-calc_mode <- function(x){
-    distinct_values <- unique(x)
-    distinct_tabulate <- tabulate(match(x, distinct_values))
-    distinct_values[which.max(distinct_tabulate)]
+calc_mode <- function(x) {
+  distinct_values <- unique(x)
+  distinct_tabulate <- tabulate(match(x, distinct_values))
+  distinct_values[which.max(distinct_tabulate)]
 }
 
 imp_cat <- function(x) {
@@ -170,7 +177,7 @@ imp_cat <- function(x) {
 
 # Create vector of continuous variables
 cont_vars <- c(
-  "Age","BMI", "BL.Cig.Day", "BL.Drks.Day", "N.prev.preg", "N.living.kids",
+  "Age", "BMI", "BL.Cig.Day", "BL.Drks.Day", "N.prev.preg", "N.living.kids",
   "N.qualifying.teeth", "BL.GE", "BL..BOP", "BL.PD.avg",
   "BL..PD.4", "BL..PD.5", "BL.CAL.avg", "BL..CAL.2", "BL..CAL.3",
   "BL.Calc.I", "BL.Pl.I", "Birthweight"
@@ -178,9 +185,9 @@ cont_vars <- c(
 
 # Create vector of categorical variables
 cat_vars <- c(
-  "Clinic","Black", "White", "Nat.Am", "Asian", "Hisp", "Education",
-  "Public.Asstce", "Hypertension", "Diabetes", "BL.Diab.Type", "Use.Tob", 
-  "Use.Alc", "Drug.Add", "Prev.preg", "Live.PTB", "Any.stillbirth", "Spont.ab", 
+  "Clinic", "Black", "White", "Nat.Am", "Asian", "Hisp", "Education",
+  "Public.Asstce", "Hypertension", "Diabetes", "BL.Diab.Type", "Use.Tob",
+  "Use.Alc", "Drug.Add", "Prev.preg", "Live.PTB", "Any.stillbirth", "Spont.ab",
   "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab", "Preg.ended...37.wk"
 )
 
@@ -188,14 +195,16 @@ cat_vars <- c(
 for (i in cont_vars) {
   opt_causal[[i]] <- imp_med(opt_causal[[i]])
 }
-  
+
 # Impute most common category for continuous variables
 for (i in cat_vars) {
   opt_causal[[i]] <- imp_cat(opt_causal[[i]])
 }
 
 # Check for missing data
-opt_causal %>% is.na() %>% colSums()
+opt_causal %>%
+  is.na() %>%
+  colSums()
 ```
 
 ### **3.a:**
@@ -207,8 +216,8 @@ model1_preg <- glm(Preg.ended...37.wk ~ Group + Clinic + Age + Black + White + N
 
 # Set up for ATE, SE, CI
 data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
 pred1 <- predict(model1_preg, newdata = data_trt, type = "response")
 pred0 <- predict(model1_preg, newdata = data_ctr, type = "response")
 ATE <- mean(pred1 - pred0)
@@ -218,33 +227,37 @@ ATE_boot <- NULL
 n <- nrow(opt_causal)
 
 # Bootstrap
-for(i in 1:B) {
+for (i in 1:B) {
   opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
   model1_preg_boot <- glm(Preg.ended...37.wk ~ Group + Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = opt_causal_boot, family = binomial(link = "logit"))
   data_trt_boot <- opt_causal_boot
-  data_trt_boot$Group = "T"
+  data_trt_boot$Group <- "T"
   data_ctr_boot <- opt_causal_boot
-  data_ctr_boot$Group = "C"
-  pred1_boot <- predict(model1_preg_boot, newdata = data_trt_boot, 
-    type = "response")
-  pred0_boot <- predict(model1_preg_boot, newdata = data_ctr_boot, 
-    type = "response")
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model1_preg_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model1_preg_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
   ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
-  }
+}
 
 # Function to print results
 get_results <- function() {
   print("Average Treatment Effect")
   print(ATE, digits = 3)
-  SE <- sd(ATE_boot) 
+  SE <- sd(ATE_boot)
   print("Bootstrap SE")
   print(SE, digits = 3)
   print("Bootstrap Normal 95% CI")
-  CI <- ATE + c(-1, 1)*qnorm(0.975)*SE
-  print(ATE + c(-1, 1)*qnorm(0.975)*SE, digits = 3)
+  CI <- ATE + c(-1, 1) * qnorm(0.975) * SE
+  print(ATE + c(-1, 1) * qnorm(0.975) * SE, digits = 3)
 }
 
-get_results()  
+get_results()
 ```
 
 ```{r warning = FALSE, message = FALSE}
@@ -253,8 +266,8 @@ model1_bw <- glm(Birthweight ~ Group + Clinic + Age + Black + White + Nat.Am + E
 
 # Set up for ATE, SE, CI
 data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
 pred1 <- predict(model1_bw, newdata = data_trt, type = "response")
 pred0 <- predict(model1_bw, newdata = data_ctr, type = "response")
 ATE <- mean(pred1 - pred0)
@@ -264,17 +277,21 @@ ATE_boot <- NULL
 n <- nrow(opt_causal)
 
 # Bootstrap
-for(i in 1:B) {
+for (i in 1:B) {
   opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
   model1_bw_boot <- glm(Birthweight ~ Group + Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = opt_causal_boot)
   data_trt_boot <- opt_causal_boot
-  data_trt_boot$Group = "T"
+  data_trt_boot$Group <- "T"
   data_ctr_boot <- opt_causal_boot
-  data_ctr_boot$Group = "C"
-  pred1_boot <- predict(model1_bw_boot, newdata = data_trt_boot, 
-    type = "response")
-  pred0_boot <- predict(model1_bw_boot, newdata = data_ctr_boot, 
-    type = "response")
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model1_bw_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model1_bw_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
   ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
 }
 
@@ -282,91 +299,100 @@ get_results()
 ```
 
 
-###**3.b**	
+### **3.b**	
 Add in nonlinear terms for the continuous covariates but no interactions.
 
 ```{r warning = FALSE, message = FALSE}
 # Pregnancy outcome
-model2_preg <- glm(Preg.ended...37.wk ~ Group + Clinic + rcs(Age, 4) + Black + White + Nat.Am + Education + Public.Asstce + rcs(BMI, 4) + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + rcs(BL.GE, 4) + rcs(BL..BOP, 4) + rcs(BL.PD.avg, 4) + rcs(BL.CAL.avg, 4) + rcs(BL.Calc.I, 4) + rcs(BL.Pl.I, 4), data = opt_causal, family = binomial(link = "logit"))
+model2_preg <- glm(Preg.ended...37.wk ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal, family = binomial(link = "logit"))
 
 # Function for bootstrap
-ate.stat.rcs <- function(data, indices){
-  data.boot <- data[indices,]
-  
-  m4.boot <- glm(Preg.ended...37.wk ~ Group + Clinic + rcs(Age, 4) + Black + White + Nat.Am + Education + Public.Asstce + rcs(BMI, 4) + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + rcs(BL.GE, 4) + rcs(BL..BOP, 4) + rcs(BL.PD.avg, 4) + rcs(BL.CAL.avg, 4) + rcs(BL.Calc.I, 4) + rcs(BL.Pl.I, 4), data = data.boot, family = binomial(link = "logit"))
-  return(coef(m4.boot)[2])
-}
-# ATE
-#p1 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "T"])
-#p0 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "C"])
-#ATE <- p1 -  p0
-
-## Standard error
-#n1 <- table(opt_causal$Group)[2]
-#n0 <- table(opt_causal$Group)[1]
-#SE <- sqrt(p1*(1 - p1)/n1 + p0*(1 - p0)/n0)
-
-#LB <- ATE - qnorm(0.975)*SE
-#UB <- ATE + qnorm(0.975)*SE
-#estimator_name <- c("Unadjusted Analysis")
-
-
-# Run bootstrap
+# Set up for ATE, SE, CI
+data_trt <- data_ctr <- opt_causal
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
+pred1 <- predict(model2_preg, newdata = data_trt, type = "response")
+pred0 <- predict(model2_preg, newdata = data_ctr, type = "response")
+ATE <- mean(pred1 - pred0)
 set.seed(100)
-boot.results <- boot(data = opt_causal, statistic = ate.stat.rcs, R = 1000, parallel = "multicore", ncpus = 8)
-boot.results ; head(boot.results$t)
+B <- 100
+ATE_boot <- NULL
+n <- nrow(opt_causal)
 
-# Store results in matrix
-ATE <- c(ATE, model2_preg$coefficients[2]); SE <- c(SE, sd(boot.results$t))
-LB <- c(LB, sort(boot.results$t)[25]); UB <- c(UB, sort(boot.results$t)[975])
-estimator_name <- c(estimator_name, "Main Effects, RCS")
-print(paste0("ATE (SE) = ", round(ATE[3], 1), " (", round(SE[3], 1), ")"))
-print(paste0("95% CI:", round(LB[3], 1), ", ", round(UB[3], 1)))
+# Bootstrap
+for (i in 1:B) {
+  opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  model2_preg_boot <- glm(Preg.ended...37.wk ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal_boot, family = binomial(link = "logit"))
+  data_trt_boot <- opt_causal_boot
+  data_trt_boot$Group <- "T"
+  data_ctr_boot <- opt_causal_boot
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model2_preg_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model2_preg_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
+  ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
+}
 
+get_results()
 ```
 
 
 ```{r warning = FALSE, message = FALSE}
 # Birth weight outcome
-model2_bw <- glm(Birthweight ~ Group + Clinic + rcs(Age, 4) + Black + White + Nat.Am + Education + Public.Asstce + rcs(BMI, 4) + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + rcs(BL.GE, 4) + rcs(BL..BOP, 4) + rcs(BL.PD.avg, 4) + rcs(BL.CAL.avg, 4) + rcs(BL.Calc.I, 4) + rcs(BL.Pl.I, 4), data = opt_causal)
-
-summary(model2_bw)
+model2_bw <- glm(Birthweight ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal)
 
 # Function for bootstrap
-ate.stat.rcs <- function(data, indices){
-  data.boot <- data[indices,]
-  
-  m4.boot <- glm(Birthweight ~ Group + Clinic + rcs(Age, 4) + Black + White + Nat.Am + Education + Public.Asstce + rcs(BMI, 4) + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + rcs(BL.GE, 4) + rcs(BL..BOP, 4) + rcs(BL.PD.avg, 4) + rcs(BL.CAL.avg, 4) + rcs(BL.Calc.I, 4) + rcs(BL.Pl.I, 4), data = data.boot)
-  return(coef(m4.boot)[2])
+# Set up for ATE, SE, CI
+data_trt <- data_ctr <- opt_causal
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
+pred1 <- predict(model2_bw, newdata = data_trt, type = "response")
+pred0 <- predict(model2_bw, newdata = data_ctr, type = "response")
+ATE <- mean(pred1 - pred0)
+set.seed(100)
+B <- 100
+ATE_boot <- NULL
+n <- nrow(opt_causal)
+
+# Bootstrap
+for (i in 1:B) {
+  opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  model2_bw_boot <- glm(Birthweight ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal_boot)
+  data_trt_boot <- opt_causal_boot
+  data_trt_boot$Group <- "T"
+  data_ctr_boot <- opt_causal_boot
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model2_bw_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model2_bw_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
+  ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
 }
 
-# Run bootstrap
-set.seed(100)
-boot.results <- boot(data = opt_causal, statistic = ate.stat.rcs, R = 1000, parallel = "multicore", ncpus = 8)
-boot.results ; head(boot.results$t)
-
-
-# Store results in matrix
-ATE <- c(ATE, model2_bw$coefficients[2]); SE <- c(SE, sd(boot.results$t))
-LB <- c(LB, sort(boot.results$t)[25]); UB <- c(UB, sort(boot.results$t)[975])
-estimator_name <- c(estimator_name, "Main Effects, RCS")
-print(paste0("ATE (SE) = ", round(ATE[3], 1), " (", round(SE[3], 1), ")"))
-print(paste0("95% CI:", round(LB[3], 1), ", ", round(UB[3], 1)))
-
+get_results()
 ```
 
 
-###**3.c**	
+### **3.c**	
 Regression model with interactions between the covariates and treatment; no nonlinear terms. 
 
 ```{r warning = FALSE, message = FALSE}
 # Create interaction model for pregnancy outcome
-model3_preg <- glm(Preg.ended...37.wk ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal, family = binomial(link = "logit"))
+model3_preg <- glm(Preg.ended...37.wk ~ Group * (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal, family = binomial(link = "logit"))
 
 # Set up for ATE, SE, CI
 data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
 pred1 <- predict(model3_preg, newdata = data_trt, type = "response")
 pred0 <- predict(model3_preg, newdata = data_ctr, type = "response")
 ATE <- mean(pred1 - pred0)
@@ -376,33 +402,36 @@ ATE_boot <- NULL
 n <- nrow(opt_causal)
 
 # Bootstrap
-for(i in 1:B) {
+for (i in 1:B) {
   opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
   model3_preg_boot <- glm(Preg.ended...37.wk ~ Group + Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = opt_causal_boot, family = binomial(link = "logit"))
   data_trt_boot <- opt_causal_boot
-  data_trt_boot$Group = "T"
+  data_trt_boot$Group <- "T"
   data_ctr_boot <- opt_causal_boot
-  data_ctr_boot$Group = "C"
-  pred1_boot <- predict(model3_preg_boot, newdata = data_trt_boot, 
-    type = "response")
-  pred0_boot <- predict(model3_preg_boot, newdata = data_ctr_boot, 
-    type = "response")
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model3_preg_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model3_preg_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
   ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
-  }
+}
 
 get_results()
-
 ```
 
 
 ```{r warning = FALSE, message = FALSE}
 # Create interaction model for birth weight outcome
-model3_bw <- glm(Birthweight ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal)
+model3_bw <- glm(Birthweight ~ Group * (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal)
 
 # Set up for ATE, SE, CI
 data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
+data_trt$Group <- "T"
+data_ctr$Group <- "C"
 pred1 <- predict(model3_bw, newdata = data_trt, type = "response")
 pred0 <- predict(model3_bw, newdata = data_ctr, type = "response")
 ATE <- mean(pred1 - pred0)
@@ -412,17 +441,21 @@ ATE_boot <- NULL
 n <- nrow(opt_causal)
 
 # Bootstrap
-for(i in 1:B) {
+for (i in 1:B) {
   opt_causal_boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
-  model3_bw_boot <- glm(Birthweight ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal_boot)
+  model3_bw_boot <- glm(Birthweight ~ Group * (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal_boot)
   data_trt_boot <- opt_causal_boot
-  data_trt_boot$Group = "T"
+  data_trt_boot$Group <- "T"
   data_ctr_boot <- opt_causal_boot
-  data_ctr_boot$Group = "C"
-  pred1_boot <- predict(model3_bw_boot, newdata = data_trt_boot, 
-    type = "response")
-  pred0_boot <- predict(model3_bw_boot, newdata = data_ctr_boot, 
-    type = "response")
+  data_ctr_boot$Group <- "C"
+  pred1_boot <- predict(model3_bw_boot,
+    newdata = data_trt_boot,
+    type = "response"
+  )
+  pred0_boot <- predict(model3_bw_boot,
+    newdata = data_ctr_boot,
+    type = "response"
+  )
   ATE_boot <- c(ATE_boot, mean(pred1_boot - pred0_boot))
 }
 
