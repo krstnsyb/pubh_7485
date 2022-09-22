@@ -21,7 +21,7 @@ options(digits = 3)
 
 ```{r warning = FALSE, message = FALSE}
 # Read in data
-load(here("OPT_Study_PUBH7485_8485_2022.Rdata"))
+load(here("data", "OPT_Study_PUBH7485_8485_2022.Rdata"))
 ```
 
 ### **Question 1:**
@@ -245,7 +245,6 @@ get_results <- function() {
 }
 
 get_results()  
-
 ```
 
 ```{r warning = FALSE, message = FALSE}
