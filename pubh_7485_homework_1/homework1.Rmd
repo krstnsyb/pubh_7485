@@ -306,7 +306,6 @@ Add in nonlinear terms for the continuous covariates but no interactions.
 # Pregnancy outcome
 model2_preg <- glm(Preg.ended...37.wk ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal, family = binomial(link = "logit"))
 
-# Function for bootstrap
 # Set up for ATE, SE, CI
 data_trt <- data_ctr <- opt_causal
 data_trt$Group <- "T"

@@ -1,0 +1,90 @@
+---
+title: 'PUBH 7485 Homework 2: Working'
+output: 
+  github_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(tableone)
+library(labelled)
+library(rms)
+library(boot)
+library(survey)
+ 
+options(scipen = 999)
+options(digits = 3)
+```
+
+```{r warning = FALSE, message = FALSE}
+# Read in data
+load(here("data", "OPT_Study_PUBH7485_8485_2022.Rdata"))
+```
+
+```{r warning = FALSE, message = FALSE}
+# Function to impute missing values in continuous variables
+imp_med <- function(x) {
+  ifelse(is.na(x), median(x, na.rm = TRUE), x)
+}
+
+# Functions to impute missing values in categorical variables
+calc_mode <- function(x) {
+  distinct_values <- unique(x)
+  distinct_tabulate <- tabulate(match(x, distinct_values))
+  distinct_values[which.max(distinct_tabulate)]
+}
+
+imp_cat <- function(x) {
+  if_else(is.na(x), calc_mode(x), x)
+}
+
+# Create vector of continuous variables
+cont_vars <- c(
+  "Age", "BMI", "BL.Cig.Day", "BL.Drks.Day", "N.prev.preg", "N.living.kids",
+  "N.qualifying.teeth", "BL.GE", "BL..BOP", "BL.PD.avg",
+  "BL..PD.4", "BL..PD.5", "BL.CAL.avg", "BL..CAL.2", "BL..CAL.3",
+  "BL.Calc.I", "BL.Pl.I", "Birthweight"
+)
+
+# Create vector of categorical variables
+cat_vars <- c(
+  "Clinic", "Black", "White", "Nat.Am", "Asian", "Hisp", "Education",
+  "Public.Asstce", "Hypertension", "Diabetes", "BL.Diab.Type", "Use.Tob",
+  "Use.Alc", "Drug.Add", "Prev.preg", "Live.PTB", "Any.stillbirth", "Spont.ab",
+  "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab", "Preg.ended...37.wk"
+)
+
+# Impute median for continuous variables
+for (i in cont_vars) {
+  opt_causal[[i]] <- imp_med(opt_causal[[i]])
+}
+
+# Impute most common category for continuous variables
+for (i in cat_vars) {
+  opt_causal[[i]] <- imp_cat(opt_causal[[i]])
+}
+
+# Check for missing data
+opt_causal %>%
+  is.na() %>%
+  colSums()
+```
+
+
+## Create propensity models
+```{r warning = FALSE, message = FALSE}
+# Logistic main effects
+p1 <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal, family = "binomial")
+round(summary(p1)$coefficients, digits = 3)
+```
+
+## Check weighted differences in key variables between groups
+```{r, echo = TRUE, warning=FALSE, results = "hide", size="tiny"} 
+ps <- predict(p1, type = "response")
+opt_causal$weight <- opt_causal$Group/ps + (1 - opt_causal$Group)/(1 - ps)
+opt_svy <- svydesign(ids = ~ 1, data = opt_causal, weights = ~ weight)
+```
