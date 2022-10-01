@@ -84,7 +84,12 @@ round(summary(p1)$coefficients, digits = 3)
 
 ## Check weighted differences in key variables between groups
 ```{r, echo = TRUE, warning=FALSE, results = "hide", size="tiny"} 
-ps <- predict(p1, type = "response")
-opt_causal$weight <- opt_causal$Group/ps + (1 - opt_causal$Group)/(1 - ps)
-opt_svy <- svydesign(ids = ~ 1, data = opt_causal, weights = ~ weight)
+
+# Recode group
+opt_causal <- opt_causal %>%
+ mutate(Group = fct_recode(Group, "1" = "T", 
+                                  "0" = "C")) %>%
+  mutate(Group = as.numeric(as.character(Group)))
+
+
 ```

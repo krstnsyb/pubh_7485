@@ -1,0 +1,11 @@
+﻿Method,ATE,lower,upper
+Unadjusted,-0.033,-0.087,0.021
+Regression,-0.032,-0.091,0.028
+Regression: nonlinear,-0.033,-0.093,0.027
+Regression: interactions,-0.027,-0.086,0.033
+PSS,-0.023,-0.075,0.029
+PSS: nonlinear,-0.02,-0.073,0.032
+PSS: final,-0.023,-0.076,0.03
+IPW,-0.027,-0.086,0.033
+IPW: nonlinear,-0.026,-0.087,0.036
+IPW: final,-0.028,-0.086,0.031

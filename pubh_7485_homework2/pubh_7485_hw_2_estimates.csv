@@ -1,0 +1,11 @@
+﻿Method,ATE,lower,upper
+Unadjusted,,,
+Regression,,,
+Regression: nonlinear,,,
+Regression: interactions,,,
+PSS,,,
+PSS: nonlinear,,,
+PSS: final,,,
+IPW,,,
+IPW: nonlinear,,,
+IPW: final,,,

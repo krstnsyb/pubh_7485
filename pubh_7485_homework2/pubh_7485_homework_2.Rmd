@@ -15,7 +15,10 @@ library(labelled)
 library(rms)
 library(boot)
 library(survey)
- 
+library(stats)
+library(reshape2)
+library(forestplot)
+
 options(scipen = 999)
 options(digits = 3)
 ```
@@ -25,9 +28,18 @@ options(digits = 3)
 load(here("data", "OPT_Study_PUBH7485_8485_2022.Rdata"))
 ```
 
-
 # Create Table 1
 ```{r warning = FALSE, message = FALSE}
+# Pare down variables
+opt_causal <- opt_causal %>%
+  dplyr::select(
+    Group, Clinic, Age, Black, White, Nat.Am, Education, Public.Asstce, BMI,
+    Hypertension, Diabetes, BL.Cig.Day, BL.Drks.Day, N.prev.preg,
+    Any.live.ptb.sb.sp.ab.in.ab, N.qualifying.teeth, BL.GE, BL..BOP,
+    BL.PD.avg, BL.CAL.avg, BL.Calc.I, BL.Pl.I, Preg.ended...37.wk,
+    Birthweight, Preg.ended
+  )
+
 # Vector of variables to summarize
 myVars <- c(
   "Clinic", "Age", "Black", "White", "Nat.Am",
@@ -37,8 +49,7 @@ myVars <- c(
   "Any.stillbirth", "Spont.ab", "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab",
   "N.living.kids", "N.qualifying.teeth", "BL.GE", "BL..BOP", "BL.PD.avg",
   "BL..PD.4", "BL..PD.5", "BL.CAL.avg", "BL..CAL.2", "BL..CAL.3",
-  "BL.Calc.I", "BL.Pl.I", "Birth.outcome", "Preg.ended...37.wk",
-  "GA.at.outcome", "Birthweight"
+  "BL.Calc.I", "BL.Pl.I", "Preg.ended...37.wk", "Birthweight"
 )
 
 # Vector of categorical variables that need transformation
@@ -46,7 +57,7 @@ catVars <- c(
   "Clinic", "Group", "Black", "White", "Nat.Am",
   "Asian", "Hisp", "Education", "Public.Asstce", "Hypertension",
   "Diabetes", "BL.Diab.Type", "Use.Tob", "Use.Alc", "Drug.Add", "Prev.preg", "Live.PTB",
-  "Any.stillbirth", "Spont.ab", "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab", "Birth.outcome",
+  "Any.stillbirth", "Spont.ab", "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab",
   "Preg.ended...37.wk"
 )
 
@@ -57,62 +68,37 @@ opt_causal <- set_variable_labels(opt_causal,
   Black = "Race: Black",
   White = "Race: White",
   Nat.Am = "Race: Native American",
-  Asian = "Race: Asian",
-  Hisp = "Ethnicity: Hispanic",
   Education = "Level of Education",
   Public.Asstce = "Received public assistance for delivery",
   Hypertension = "Chronic hypertension at baseline",
   Diabetes = "Diabetes at baseline",
-  BL.Diab.Type = "Baseline diabetes type (for those with diabetes)",
   BMI = "Body mass index",
-  Use.Tob = "History of tobacco use",
   BL.Cig.Day = "# cigarettes per day",
-  Use.Alc = "History of alcohol use",
   BL.Drks.Day = "# drinks per day",
-  Drug.Add = "History of drug addiction",
-  Prev.preg = "Any previous pregnancy",
   N.prev.preg = "# previous pregnancies",
-  Live.PTB = "Previous live preterm birth",
-  Any.stillbirth = "Previous stillbirth",
-  Spont.ab = "Previous spontaneous abortion",
-  Induced.ab = "Previous induced abortion",
   Any.live.ptb.sb.sp.ab.in.ab = "Previous live pre-term birth, stillbirth,
 or spontaneous/induced abortion",
-  N.living.kids = "# of living children",
   N.qualifying.teeth = "# of qualifying teeth",
   BL.GE = "Whole-mouth average gingival index",
   BL..BOP = "Fraction of sites bleeding
 on probing",
   BL.PD.avg = "Whole-mouth average pocket depth",
-  BL..PD.4 = "Fraction of sites with pocket depth ≥ 4mm",
-  BL..PD.5 = "Fraction of sites with pocket depth ≥ 5mm",
   BL.CAL.avg = "Whole-mouth average clinical attachment level",
-  BL..CAL.2 = "Fraction of sites with clinical attachment level ≥ 2 mm",
-  BL..CAL.3 = "Fraction of sites with clinical attachment level ≥ 3 mm",
   BL.Calc.I = "Whole-mouth average calculus index",
   BL.Pl.I = "Whole-mouth average plaque index",
-  Birth.outcome = "Birth outcome",
   Preg.ended...37.wk = "Pregnancy ended before 37 weeks",
-  GA.at.outcome = "Gestational age at outcome (d)",
   Birthweight = "Birth weight (g)"
 )
 
-# Create Table 1
-tab1 <- CreateTableOne(vars = myVars, strata = "Group", data = opt_causal, factorVars = catVars, test = FALSE)
+# Create Unweighted Table 1
+tabUnmatched <- CreateTableOne(vars = myVars, strata = "Group", data = opt_causal, factorVars = catVars, test = FALSE)
 
-tab1Mat <- print(tab1, smd = TRUE, showAllLevels = TRUE, exact = "stage", quote = FALSE, noSpaces = TRUE, printToggle = FALSE, varLabels = TRUE)
+tab1Mat <- print(tabUnmatched, smd = TRUE, showAllLevels = TRUE, exact = "stage", quote = FALSE, noSpaces = TRUE, printToggle = FALSE, varLabels = TRUE)
+
+write.csv(tab1Mat, file = "homework2_table1_unwt.csv")
 ```
 
-### **Question 1:**
-
-1.	Consider estimating the causal treatment effect using i) propensity score stratification and ii) inverse probability weighting (for the purposes of this assignment, please use the IPW2 estimator for the course notes). For each of these scenarios, please report the estimated average (causal) treatment effect, standard error, and 95% confidence interval in a table. Please have a separate table for each outcome and for each estimation approach (propensity score stratification and inverse probability weighting). Note that Birth.outcome and GA.at.outcome are additional outcome variables and PID is the patient identifier none of which should not be included in the regression models.
-
-a)	Consider a logistic model for treatment assignment with just main effect terms for the covariates.
-b)	Add in nonlinear terms for the continuous covariates but still no interactions.
-c)	(BONUS) Consider some other model for treatment assignment such as a random forest.
-d)	Consider a “final” propensity model to estimate the ATE which may include interactions and nonlinear terms. Variable selection may also be considered here as well. For this, in addition to providing the summary measures of the ATE described above, please describe how you arrived at your “final” propensity model.   
-e)	Create a line plot of the weighted standardized mean difference using the propensity score model from (a) – (d) above as well as the unweighted standardized mean difference. Comment on the balance that weighting was able to achieve.   
-
+### **Question 1: Estimate the causal treatment effect using PSS and IPW.**
 
 ```{r warning = FALSE, message = FALSE}
 # Function to impute missing values in continuous variables
@@ -133,18 +119,16 @@ imp_cat <- function(x) {
 
 # Create vector of continuous variables
 cont_vars <- c(
-  "Age", "BMI", "BL.Cig.Day", "BL.Drks.Day", "N.prev.preg", "N.living.kids",
-  "N.qualifying.teeth", "BL.GE", "BL..BOP", "BL.PD.avg",
-  "BL..PD.4", "BL..PD.5", "BL.CAL.avg", "BL..CAL.2", "BL..CAL.3",
-  "BL.Calc.I", "BL.Pl.I", "Birthweight"
+  "Age", "BMI", "BL.Cig.Day", "BL.Drks.Day", "N.prev.preg",
+  "BL.GE", "BL..BOP", "BL.PD.avg", "BL.CAL.avg", "BL.Calc.I", "BL.Pl.I",
+  "Birthweight"
 )
 
 # Create vector of categorical variables
 cat_vars <- c(
-  "Clinic", "Black", "White", "Nat.Am", "Asian", "Hisp", "Education",
-  "Public.Asstce", "Hypertension", "Diabetes", "BL.Diab.Type", "Use.Tob",
-  "Use.Alc", "Drug.Add", "Prev.preg", "Live.PTB", "Any.stillbirth", "Spont.ab",
-  "Induced.ab", "Any.live.ptb.sb.sp.ab.in.ab", "Preg.ended...37.wk"
+  "Clinic", "Black", "White", "Nat.Am", "Education",
+  "Public.Asstce", "Hypertension", "Diabetes", "Prev.preg",
+  "Any.live.ptb.sb.sp.ab.in.ab", "Preg.ended...37.wk"
 )
 
 # Impute median for continuous variables
@@ -163,212 +147,690 @@ opt_causal %>%
   colSums()
 ```
 
-## Get propensity score
+## Get propensity scores
 ```{r warning = FALSE, message = FALSE}
 # Create propensity models
-# logistic main effects
+# Llogistic main effects
 p1 <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal, family = "binomial")
 round(summary(p1)$coefficients, digits = 3)
 
 # Add non-linear terms
-p2_nonlin <-  glm(Group ~ (Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2)), data = opt_causal, family = binomial)
-round(summary(p2_nonlin)$coefficients, digits = 3)
-
-## Obtain estimated propensity scores
-opt_causal$ps <- predict(p1, type = "response")
-
+p2 <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)), data = opt_causal, family = binomial)
+round(summary(p2)$coefficients, digits = 3)
 ```
 
+## Use stepwise selection for final propensity model
+```{r warning = FALSE, message = FALSE}
+# Full model 1 - adding nonlinear and interaction terms
+fullmodel1 <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2) + Group * White + Group * Nat.Am + Group * N.prev.preg + Group * Any.live.ptb.sb.sp.ab.in.ab), data = opt_causal, family = "binomial")
 
-## Obtain Estimated Propensity Scores and Divide Into Quintiles
+model.stepwise <- step(fullmodel1, direction = "both", scope = list(upper = ~ Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2) + Group * White + Group * Nat.Am + Group * N.prev.preg + Group * Any.live.ptb.sb.sp.ab.in.ab, lower = ~1))
+summary(model.stepwise)
 
-```{r, echo = TRUE, cache = TRUE}
-ps <- predict(p1, type = "response")
-ps_quintile <- cut(ps, 
-	breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5)
-table(ps_quintile, opt_causal$Group)
+# Note: This version performs worse in regard to balancing SMD
+
+# Try with no interaction terms, only nonlinear
+fullmodel2 <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)), data = opt_causal, family = "binomial")
+
+model.stepwise <- step(fullmodel2, direction = "both", scope = list(upper = ~ Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2), lower = ~1))
+summary(model.stepwise)
+
+# Note: This is much better at balancing, but the SMDs are still not as low as the first two propensity score models.
+
+p3 <- glm(Group ~ (White + Nat.Am + Diabetes + BL.Cig.Day + Any.live.ptb.sb.sp.ab.in.ab + I(BL.PD.avg^2) + I(BL.CAL.avg^2)), data = opt_causal, family = binomial)
+round(summary(p3)$coefficients, digits = 3)
 ```
-
 
 
 ## Check weighted differences in key variables between groups
-```{r, echo = TRUE, warning=FALSE, results = "hide", size="tiny"} 
-ps <- predict(p1, type = "response")
-opt_causal$weight <- opt_causal$Group/ps + (1 - opt_causal$Group)/(1 - ps)
-opt_svy <- svydesign(ids = ~ 1, data = opt_causal, weights = ~ weight)
+```{r warning = FALSE, message = FALSE}
+# Recode group
+opt_causal <- opt_causal %>%
+  mutate(group_num = fct_recode(Group,
+    "1" = "T",
+    "0" = "C"
+  )) %>%
+  mutate(group_num = as.numeric(as.character(group_num)))
+
+# Find weighted differences: Model a
+ps_a <- predict(p1, type = "response")
+opt_causal$weight <- opt_causal$group_num / ps_a + (1 - opt_causal$group_num) / (1 - ps_a)
+opt_svy <- svydesign(ids = ~1, data = opt_causal, weights = ~weight)
+tabWeighted_a <- svyCreateTableOne(vars = myVars, strata = "Group", data = opt_svy, test = FALSE)
+t2 <- print(tabWeighted_a, smd = TRUE, showAllLevels = TRUE, varLabels = TRUE)
+write.csv(t2, file = "homework2_table1_a.csv")
 
 
+# Find weighted differences: Model b
+ps_b <- predict(p2, type = "response")
+opt_causal$weight <- opt_causal$group_num / ps_b + (1 - opt_causal$group_num) / (1 - ps_b)
+opt_svy <- svydesign(ids = ~1, data = opt_causal, weights = ~weight)
+tabWeighted_b <- svyCreateTableOne(vars = myVars, strata = "Group", data = opt_svy, test = FALSE)
+t2 <- print(tabWeighted_b, smd = TRUE, showAllLevels = TRUE, varLabels = TRUE)
+write.csv(t2, file = "homework2_table1_b.csv")
 
+# Find weighted differences: Model c
+ps_c <- predict(p3, type = "response")
+opt_causal$weight <- opt_causal$group_num / ps_c + (1 - opt_causal$group_num) / (1 - ps_c)
+opt_svy <- svydesign(ids = ~1, data = opt_causal, weights = ~weight)
+tabWeighted_c <- svyCreateTableOne(vars = myVars, strata = "Group", data = opt_svy, test = FALSE)
+t2 <- print(tabWeighted_c, smd = TRUE, showAllLevels = TRUE, varLabels = TRUE)
+write.csv(t2, file = "homework2_table1_c.csv")
+```
 
-## Weighted Differences in Key Variables Between Groups
-ps <- predict(p1, type = "response")
-imai$weight <- imai$PHN.C1/ps + (1-imai$PHN.C1)/(1-ps)
-imaiSvy <- svydesign(ids = ~ 1, data = imai, weights = ~ weight)
+## Plot of SMD
 
-tabWeighted <- svyCreateTableOne(vars = vars, strata = "PHN.C1F",
-  data = imaiSvy, test = FALSE)
-t2 <- print(tabWeighted, smd = TRUE, showAllLevels = TRUE, varLabels = TRUE)
+```{r warning = FALSE, message = FALSE}
+dataPlot <- data.frame(
+  variable = rownames(ExtractSmd(tabUnmatched)),
+  Unweighted = as.numeric(ExtractSmd(tabUnmatched)),
+  Weighted_logit_model_a = as.numeric(ExtractSmd(tabWeighted_a)),
+  Weighted_logit_model_b = as.numeric(ExtractSmd(tabWeighted_b)),
+  Weighted_logit_model_c = as.numeric(ExtractSmd(tabWeighted_c))
+)
+dataPlot <- dplyr::filter(
+  dataPlot,
+  variable != "Preg.ended" &
+    variable != "Preg.ended...37.wk" &
+    variable != "Birthweight"
+)
+
+## Create long-format data for ggplot2
+dataPlotMelt <- melt(
+  data = dataPlot,
+  id.vars = c("variable"),
+  variable.name = "Method",
+  value.name = "SMD"
+)
+
+## Order variable names by magnitude of SMD
+varNames <- as.character(dataPlot$variable)[order(dataPlot$Unweighted)]
+
+## Order factor levels in the same order
+dataPlotMelt$variable <- factor(dataPlotMelt$variable,
+  levels = varNames
+)
+
+## Plot using ggplot2
+ggplot(
+  data = dataPlotMelt,
+  mapping = aes(x = variable, y = SMD, group = Method, color = Method)
+) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.1, color = "black", size = 0.1) +
+  coord_flip() +
+  labs(title = "Figure 1. Standardized mean difference of propensity score models, \ncompared to unweighted standardized mean difference\n") +
+  theme_minimal() +
+  theme(
+    legend.key = element_blank(),
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )
 ```
 
 
+## Propensity Scores Stratification: Preterm
+```{r warning = FALSE, message = FALSE}
+# Preterm: Model a
+ps <- predict(p1, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
 
-```
-
-
-
-## Propensity Scores Stratification
-
-```{r, echo = TRUE, cache = TRUE}
 n <- nrow(opt_causal)
 nj <- table(ps_quintile)
-te_quintile <- 
-  tapply(opt_causal$Preg.ended[opt_causal$Group == "T"],
-         ps_quintile[opt_causal$Group == "T"], mean) -
-	tapply(opt_causal$Preg.ended[opt_causal$Group == "C"],
-	       ps_quintile[opt_causal$Group == "C"], mean)
+te_quintile <- tapply(opt_causal$Preg.ended[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Preg.ended[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
 print(round(te_quintile, 3))
-ATE_PSS <- sum(te_quintile *nj/n)
+ATE_PSS <- sum(te_quintile * nj / n)
 print(round(ATE_PSS, 3))
 
-```
+# Note: the outcome needs to be coded numerically
 
-
-# 3.a: PSS regression adjustment
-```{r, echo = TRUE, cache = TRUE}
-# Create main effects model for preterm outcome
-m1.ps <- glm(Preg.ended...37.wk ~ Group*rcs(ps, 5), data = opt_causal, family = "binomial")
-round(summary(m1.ps)$coefficients, digits = 3)
-
-# Set up for ATE, SE, CI
-data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
-pred1.ps <- predict(m1.ps, newdata = data_trt, type = "response")
-pred0.ps <- predict(m1.ps, newdata = data_ctr, type = "response")
-ATE.ps <- mean(pred1.ps - pred0.ps)
-print(ATE.ps, digits = 3)
-
-# Bootstrap for PS Regression Adjustment
-set.seed(100)
+set.seed(2123)
 B <- 100
-ATE.ps.boot <- NULL
+ATE_PSS.boot <- NULL
 n <- nrow(opt_causal)
-for(i in 1:B) {
+for (i in 1:B) {
   opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
-  m1.ps.boot <- glm(Preg.ended...37.wk ~ Group*rcs(ps, 5), data = opt.boot, family = "binomial")
-  data_trt.boot <- opt.boot
-  data_trt.boot$Group = "T"
-  data_ctr.boot <- opt.boot
-  data_ctr.boot$Group = "C"
-  pred1.ps.boot <- predict(m1.ps.boot, newdata = data_trt.boot, 
-    type = "response")
-  pred0.ps.boot <- predict(m1.ps.boot, newdata = data_ctr.boot, 
-    type = "response")
-  ATE.ps.boot <- c(ATE.ps.boot, mean(pred1.ps.boot - pred0.ps.boot))
+  p1.boot <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Preg.ended[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Preg.ended[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
 }
 
 # Function to print results
 get_results <- function() {
   print("Average Treatment Effect")
-  print(ATE.ps, digits = 3)
-  SE.ps <- sd(ATE.ps.boot) 
+  print(ATE_PSS, digits = 3)
+  SE_PSS <- sd(ATE_PSS.boot)
   print("Bootstrap SE")
-  print(SE.ps, digits = 3)
+  print(SE_PSS, digits = 3)
   print("Bootstrap Normal 95% CI")
-  CI.ps <- ATE.ps + c(-1, 1)*qnorm(0.975)*SE.ps
-  print(ATE.ps + c(-1, 1)*qnorm(0.975)*SE.ps, digits = 3)
+  print(ATE_PSS + c(-1, 1) * qnorm(0.975) * SE_PSS, digits = 3)
+  CI_PSS <- ATE_PSS + c(-1, 1) * qnorm(0.975) * SE_PSS
 }
 
 get_results()
 ```
 
 ```{r warning = FALSE, message = FALSE}
-# Create main effects model for Birth weight outcome
-m2.ps <- glm(Birthweight ~ Group*rcs(ps, 5), data = opt_causal)
-round(summary(m2.ps)$coefficients, digits = 3)
+# Preterm: Model b
+ps <- predict(p2, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
 
-# Set up for ATE, SE, CI
-data_trt <- data_ctr <- opt_causal
-data_trt$Group <- "T"
-data_ctr$Group <- "C"
-pred1 <- predict(m2.ps, newdata = data_trt, type = "response")
-pred0 <- predict(m2.ps, newdata = data_ctr, type = "response")
-ATE.ps <- mean(pred1 - pred0)
-print(ATE.ps, digits = 3)
-
-
-# Bootstrap
-set.seed(100)
-B <- 100
-ATE.ps.boot <- NULL
 n <- nrow(opt_causal)
-for(i in 1:B) {
+nj <- table(ps_quintile)
+te_quintile <- tapply(opt_causal$Preg.ended[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Preg.ended[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
+print(round(te_quintile, 3))
+ATE_PSS <- sum(te_quintile * nj / n)
+print(round(ATE_PSS, 3))
+
+set.seed(2123)
+B <- 100
+ATE_PSS.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
   opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
-  m2.ps.boot <- glm(Birthweight ~ Group*rcs(ps, 5), data = opt.boot)
-  data_trt.boot <- opt.boot
-  data_trt.boot$Group = "T"
-  data_ctr.boot <- opt.boot
-  data_ctr.boot$Group = "C"
-  pred1.ps.boot <- predict(m2.ps.boot, newdata = data_trt.boot, 
-    type = "response")
-  pred0.ps.boot <- predict(m2.ps.boot, newdata = data_ctr.boot, 
-    type = "response")
-  ATE.ps.boot <- c(ATE.ps.boot, mean(pred1.ps.boot - pred0.ps.boot))
+  p1.boot <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Preg.ended[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Preg.ended[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
 }
 
 get_results()
 ```
 
-# 3.b: Add in nonlinear terms for the continuous covariates but still no interactions.
+```{r warning = FALSE, message = FALSE}
+# Preterm: Model c
+ps <- predict(p3, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
 
-# Pregnancy outcome
-model2_preg <- glm(Preg.ended...37.wk ~ Group + Clinic + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + I(BMI^2) + Hypertension + Diabetes + I(BL.Cig.Day^2) + I(BL.Drks.Day^2) + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + I(N.qualifying.teeth^2) + I(BL.GE^2) + I(BL..BOP^2) + I(BL.PD.avg^2) + I(BL.CAL.avg^2) + I(BL.Calc.I^2) + I(BL.Pl.I^2), data = opt_causal, family = binomial(link = "logit"))
-
-```{r, echo = TRUE, cache = TRUE}
-# Create main effects model for preterm outcome
-m1.ps <- glm(Preg.ended...37.wk ~ Group*rcs(ps, 5), data = opt_causal, family = "binomial")
-round(summary(m1.ps)$coefficients, digits = 3)
-
-# Set up for ATE, SE, CI
-data_trt <- data_ctr <- opt_causal
-data_trt$Group = "T"
-data_ctr$Group = "C"
-pred1.ps <- predict(m1.ps, newdata = data_trt, type = "response")
-pred0.ps <- predict(m1.ps, newdata = data_ctr, type = "response")
-ATE.ps <- mean(pred1.ps - pred0.ps)
-print(ATE.ps, digits = 3)
-
-# Bootstrap for PS Regression Adjustment
-set.seed(100)
-B <- 100
-ATE.ps.boot <- NULL
 n <- nrow(opt_causal)
-for(i in 1:B) {
+nj <- table(ps_quintile)
+te_quintile <- tapply(opt_causal$Preg.ended[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Preg.ended[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
+print(round(te_quintile, 3))
+ATE_PSS <- sum(te_quintile * nj / n)
+print(round(ATE_PSS, 3))
+
+set.seed(2123)
+B <- 100
+ATE_PSS.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
   opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
-  m1.ps.boot <- glm(Preg.ended...37.wk ~ Group*rcs(ps, 5), data = opt.boot, family = "binomial")
-  data_trt.boot <- opt.boot
-  data_trt.boot$Group = "T"
-  data_ctr.boot <- opt.boot
-  data_ctr.boot$Group = "C"
-  pred1.ps.boot <- predict(m1.ps.boot, newdata = data_trt.boot, 
-    type = "response")
-  pred0.ps.boot <- predict(m1.ps.boot, newdata = data_ctr.boot, 
-    type = "response")
-  ATE.ps.boot <- c(ATE.ps.boot, mean(pred1.ps.boot - pred0.ps.boot))
+  p1.boot <- glm(Group ~ (White + Nat.Am + Diabetes + BL.Cig.Day + Any.live.ptb.sb.sp.ab.in.ab + I(BL.PD.avg^2) + I(BL.CAL.avg^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Preg.ended[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Preg.ended[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
 }
 
-# Function to print results
-get_results <- function() {
+get_results()
+```
+
+## IPW: Preterm
+
+```{r warning = FALSE, message = FALSE}
+# Preterm model a
+# Form Inverse Probability Weights
+ps <- predict(p1, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Preg.ended, w1) -
+  weighted.mean(opt_causal$Preg.ended, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Preg.ended * w1.boot) - mean(opt.boot$Preg.ended * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Preg.ended, w1.boot) - weighted.mean(opt.boot$Preg.ended, w0.boot)
+  )
+}
+
+# Note: grouping variable should be numeric 0/1
+
+# Function to get results
+get_results_ipw <- function() {
   print("Average Treatment Effect")
-  print(ATE.ps, digits = 3)
-  SE.ps <- sd(ATE.ps.boot) 
+  print(ATE_IPW2, digits = 3)
+  SE_IPW2 <- sd(ATE_IPW2.boot)
   print("Bootstrap SE")
-  print(SE.ps, digits = 3)
+  print(SE_IPW2, digits = 3)
   print("Bootstrap Normal 95% CI")
-  CI.ps <- ATE.ps + c(-1, 1)*qnorm(0.975)*SE.ps
-  print(ATE.ps + c(-1, 1)*qnorm(0.975)*SE.ps, digits = 3)
+  print(ATE_IPW2 + c(-1, 1) * qnorm(0.975) * SE_IPW2, digits = 3)
+  CI_IPW2 <- ATE_IPW2 + c(-1, 1) * qnorm(0.975) * SE_IPW2
+}
+
+get_results_ipw()
+```
+
+```{r warning = FALSE, message = FALSE}
+# Preterm model b
+# Form Inverse Probability Weights
+ps <- predict(p2, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Preg.ended, w1) -
+  weighted.mean(opt_causal$Preg.ended, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Preg.ended * w1.boot) - mean(opt.boot$Preg.ended * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Preg.ended, w1.boot) - weighted.mean(opt.boot$Preg.ended, w0.boot)
+  )
+}
+
+get_results_ipw()
+```
+
+```{r warning = FALSE, message = FALSE}
+# Preterm model c
+# Form Inverse Probability Weights
+ps <- predict(p3, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Preg.ended, w1) -
+  weighted.mean(opt_causal$Preg.ended, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (White + Nat.Am + Diabetes + BL.Cig.Day + Any.live.ptb.sb.sp.ab.in.ab + I(BL.PD.avg^2) + I(BL.CAL.avg^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Preg.ended * w1.boot) - mean(opt.boot$Preg.ended * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Preg.ended, w1.boot) - weighted.mean(opt.boot$Preg.ended, w0.boot)
+  )
+}
+
+get_results_ipw()
+```
+
+
+## PSS: Birth weight
+```{r warning = FALSE, message = FALSE}
+# BW: Model a
+ps <- predict(p1, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
+
+n <- nrow(opt_causal)
+nj <- table(ps_quintile)
+te_quintile <- tapply(opt_causal$Birthweight[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Birthweight[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
+print(round(te_quintile, 3))
+ATE_PSS <- sum(te_quintile * nj / n)
+print(round(ATE_PSS, 3))
+
+# Note: the outcome needs to be coded numerically
+
+set.seed(2123)
+B <- 100
+ATE_PSS.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Birthweight[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Birthweight[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
 }
 
 get_results()
 ```
 
+```{r warning = FALSE, message = FALSE}
+# BW: Model b
+ps <- predict(p2, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
+
+n <- nrow(opt_causal)
+nj <- table(ps_quintile)
+te_quintile <- tapply(opt_causal$Birthweight[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Birthweight[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
+print(round(te_quintile, 3))
+ATE_PSS <- sum(te_quintile * nj / n)
+print(round(ATE_PSS, 3))
+
+set.seed(2123)
+B <- 100
+ATE_PSS.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Birthweight[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Birthweight[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
+}
+
+get_results()
+```
+
+```{r warning = FALSE, message = FALSE}
+# BW: Model c
+ps <- predict(p3, type = "response")
+ps_quintile <- cut(ps,
+  breaks = c(0, quantile(ps, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+)
+table(ps_quintile, opt_causal$Group)
+
+n <- nrow(opt_causal)
+nj <- table(ps_quintile)
+te_quintile <- tapply(opt_causal$Birthweight[opt_causal$Group == "T"], ps_quintile[opt_causal$Group == "T"], mean) -
+  tapply(opt_causal$Birthweight[opt_causal$Group == "C"], ps_quintile[opt_causal$Group == "C"], mean)
+print(round(te_quintile, 3))
+ATE_PSS <- sum(te_quintile * nj / n)
+print(round(ATE_PSS, 3))
+
+set.seed(2123)
+B <- 100
+ATE_PSS.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (White + Nat.Am + Diabetes + BL.Cig.Day + Any.live.ptb.sb.sp.ab.in.ab + I(BL.PD.avg^2) + I(BL.CAL.avg^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  ps_quintile.boot <- cut(ps.boot,
+    breaks = c(0, quantile(ps.boot, p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
+  )
+  nj.boot <- table(ps_quintile.boot)
+  te_quintile.boot <- tapply(opt.boot$Birthweight[opt.boot$Group == "T"], ps_quintile[opt.boot$Group == "T"], mean) -
+    tapply(opt.boot$Birthweight[opt.boot$Group == "C"], ps_quintile[opt.boot$Group == "C"], mean)
+  ATE.boot <- sum(te_quintile.boot * nj / n)
+  ATE_PSS.boot <- c(ATE_PSS.boot, ATE.boot)
+}
+
+get_results()
+```
+
+## IPW: Birth weight
+
+```{r warning = FALSE, message = FALSE}
+# BW model a
+# Form Inverse Probability Weights
+ps <- predict(p1, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Birthweight, w1) -
+  weighted.mean(opt_causal$Birthweight, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Birthweight * w1.boot) - mean(opt.boot$Birthweight * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Birthweight, w1.boot) - weighted.mean(opt.boot$Birthweight, w0.boot)
+  )
+}
+
+# Note: grouping variable should be numeric 0/1
+
+get_results_ipw()
+```
+
+```{r warning = FALSE, message = FALSE}
+# BW model b
+# Form Inverse Probability Weights
+ps <- predict(p2, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Birthweight, w1) -
+  weighted.mean(opt_causal$Birthweight, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (Clinic + Age + I(Age^2) + Black + White + Nat.Am + Education + Public.Asstce + BMI + I(BMI^2) + Hypertension + Diabetes + BL.Cig.Day + I(BL.Cig.Day^2) + BL.Drks.Day + I(BL.Drks.Day^2) + N.prev.preg + I(N.prev.preg^2) + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + I(N.qualifying.teeth^2) + BL.GE + I(BL.GE^2) + BL..BOP + I(BL..BOP^2) + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2) + BL.Calc.I + I(BL.Calc.I^2) + BL.Pl.I + I(BL.Pl.I^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Birthweight * w1.boot) - mean(opt.boot$Birthweight * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Birthweight, w1.boot) - weighted.mean(opt.boot$Birthweight, w0.boot)
+  )
+}
+
+get_results_ipw()
+```
+
+```{r warning = FALSE, message = FALSE}
+# BW model c
+# Form Inverse Probability Weights
+ps <- predict(p3, type = "response")
+w1 <- opt_causal$group_num / ps
+w0 <- (1 - opt_causal$group_num) / (1 - ps)
+
+# Histogram of Standardized Weights
+P.A <- prop.table(table(opt_causal$group_num))[2]
+hist(w1[opt_causal$group_num == 1] / (1 / P.A), main = "Std. Weights for Treated")
+
+# IPW2 Adjustment
+ATE_IPW2 <- weighted.mean(opt_causal$Birthweight, w1) -
+  weighted.mean(opt_causal$Birthweight, w0)
+print(ATE_IPW2, digits = 3)
+
+# Bootstrap for IPW Estimators
+set.seed(2123)
+B <- 100
+ATE_IPW.boot <- NULL
+ATE_IPW2.boot <- NULL
+n <- nrow(opt_causal)
+for (i in 1:B) {
+  opt.boot <- opt_causal[sample(1:n, n, replace = TRUE), ]
+  p1.boot <- glm(Group ~ (White + Nat.Am + Diabetes + BL.Cig.Day + Any.live.ptb.sb.sp.ab.in.ab + I(BL.PD.avg^2) + I(BL.CAL.avg^2)),
+    data = opt.boot, family = "binomial"
+  )
+  ps.boot <- predict(p1.boot, type = "response")
+  w1.boot <- opt.boot$group_num / ps.boot
+  w0.boot <- (1 - opt.boot$group_num) / (1 - ps.boot)
+  ATE_IPW.boot <- c(
+    ATE_IPW.boot,
+    mean(opt.boot$Birthweight * w1.boot) - mean(opt.boot$Birthweight * w0.boot)
+  )
+  ATE_IPW2.boot <- c(
+    ATE_IPW2.boot,
+    weighted.mean(opt.boot$Birthweight, w1.boot) - weighted.mean(opt.boot$Birthweight, w0.boot)
+  )
+}
+
+get_results_ipw()
+```
+
+# Question 2: Forest plot of estimates and 95% CIs
+```{r warning = FALSE, message = FALSE}
+# Read in previously created csv files
+est_preterm <- read_csv(here("pubh_7485_homework2", "pubh_7485_hw_2_all_preterm.csv"))
+est_bw <- read_csv(here("pubh_7485_homework2", "pubh_7485_hw_2_all_bw.csv"))
+
+# Forest plot for preterm
+forestplot(est_preterm,
+  mean = ATE,
+  lower = lower,
+  upper = upper,
+  labeltext = Method,
+  col = fpColors(
+    box = "lightsteelblue3",
+    line = "lightsteelblue4",
+    summary = "lightsteelblue3"
+  ),
+  title = "Figure 2. Forest plot comparing ATE and 95% CIs for \npregnancy ending before 37 weeks"
+)
+
+# Forest plot for birth weight
+forestplot(est_bw,
+  mean = ATE,
+  lower = lower,
+  upper = upper,
+  labeltext = Method,
+  col = fpColors(
+    box = "goldenrod1",
+    line = "goldenrod3",
+    summary = "goldenrod1"
+  ),
+  title = "Figure 3. Forest plot comparing ATE and 95% CIs \nfor birth weight"
+)
+```
