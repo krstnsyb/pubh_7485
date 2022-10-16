@@ -1,0 +1,68 @@
+---
+title: 'PUBH 7485 Final - Step 2'
+output: 
+  github_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(tableone)
+library(labelled)
+library(rms)
+library(boot)
+ 
+options(scipen = 999)
+options(digits = 3)
+```
+
+```{r warning = FALSE, message = FALSE}
+# Read in data
+load(here("data", "npc_aim3_t1_clean.rds"))
+```
+
+
+Find the unadjusted average treatment effect, standard error, and 95% confidence intervals for the outcomes of interest.
+
+```{r warning = FALSE, message = FALSE}
+# Outcome: Pregnancy ended < 37 weeks
+## ATE
+## Change group to numeric to calculate proportions
+opt_causal_num <- opt_causal %>%
+  mutate(Preg.ended...37.wk_num = fct_recode(Preg.ended...37.wk, "0" = "No ", "1" = "Yes")) %>%
+  mutate(Preg.ended...37.wk_num = as.numeric(as.character(Preg.ended...37.wk_num)))
+
+## Unadjusted ATE
+p1 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "T"])
+p0 <- mean(opt_causal_num$Preg.ended...37.wk_num[opt_causal_num$Group == "C"])
+p1 - p0
+
+## Standard error
+n1 <- table(opt_causal_num$Group)[2]
+n0 <- table(opt_causal_num$Group)[1]
+SE <- sqrt(p1 * (1 - p1) / n1 + p0 * (1 - p0) / n0)
+SE
+
+## 95% CI
+CI_unadj <- p1 - p0 + c(-1, 1) * qnorm(0.975) * SE
+print(p1 - p0 + c(-1, 1) * qnorm(0.975) * SE, digits = 3)
+
+# Outcome: Birth weight
+## Unadjusted ATE
+ATE <- (mean(opt_causal$Birthweight[opt_causal$Group == "T"])) - (mean(opt_causal$Birthweight[opt_causal$Group == "C"], na.rm = TRUE))
+
+## SE
+SE <- sqrt(
+  (sd(opt_causal$Birthweight[opt_causal$Group == "T"])^2 / n1) +
+    (sd(opt_causal$Birthweight[opt_causal$Group == "C"], na.rm = TRUE)^2 / n0)
+)
+SE
+
+## CI
+opt_causal$Group_rev <- factor(opt_causal$Group, levels = rev(levels(opt_causal$Group)))
+
+t.test(opt_causal$Birthweight ~ opt_causal$Group_rev, conf.level = 0.95, mu = 0, alternative = "two.sided", var.equal = FALSE)
+```
