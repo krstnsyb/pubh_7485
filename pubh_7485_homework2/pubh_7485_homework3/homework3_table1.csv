@@ -1,0 +1,37 @@
+,level,Unweighted SMD
+,,
+Clinic location (%),KY,0.15
+,MN,
+,MS,
+,NY,
+Age (y) (mean (SD)),,0.015
+Race: Black (%),No,0.005
+,Yes,
+Race: White (%),No,0.354
+,Yes,
+Race: Native American (%),No,0.309
+,Yes,
+Level of Education (%),8-12 yrs,0.032
+,LT 8 yrs,
+,MT 12 yrs,
+Received public assistance for delivery (%),No,0.051
+,Yes,
+Chronic hypertension at baseline (%),N,0.064
+,Y,
+Diabetes at baseline (%),No,0.161
+,Yes,
+Body mass index (mean (SD)),,0.062
+# cigarettes per day (mean (SD)),,0.027
+# drinks per day (mean (SD)),,0.011
+# previous pregnancies (mean (SD)),,0.111
+"Previous live pre-term birth, stillbirth,
+or spontaneous/induced abortion (%)",No,0.164
+,Yes,
+# of qualifying teeth (mean (SD)),,0.011
+Whole-mouth average gingival index (mean (SD)),,0.173
+"Fraction of sites bleeding
+on probing (mean (SD))",,0.057
+Whole-mouth average pocket depth (mean (SD)),,0.064
+Whole-mouth average clinical attachment level (mean (SD)),,0.176
+Whole-mouth average calculus index (mean (SD)),,0.066
+Whole-mouth average plaque index (mean (SD)),,0.111

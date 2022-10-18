@@ -1,0 +1,26 @@
+Table 5. Comparison of SMD for various analysis approaches,,,,
+,SMD,,,
+,Unweighted,IPW,1:1 matching,2:1 matching
+Clinic location ,0.15,0.068,0.236,0.161
+Age (y) ,0.015,0.023,0.082,0.016
+Race: Black ,0.005,0.007,0.066,0.082
+Race: White ,0.354,<0.001,0.06,0.197
+Race: Native American ,0.309,0.008,0.033,0.243
+Level of Education ,0.032,0.113,0.11,0.014
+Received public assistance for delivery ,0.051,0.048,0.142,0.05
+Chronic hypertension at baseline ,0.064,0.063,0.032,0.049
+Diabetes at baseline ,0.161,0.015,0.083,0.148
+Body mass index ,0.062,0.049,0.023,0.04
+# cigarettes per day ,0.027,0.041,0.035,0.014
+# drinks per day ,0.011,0.026,0.027,0.007
+# previous pregnancies ,0.111,0.077,0.105,0.104
+"Previous live pre-term birth, stillbirth,
+or spontaneous/induced abortion",0.164,0.019,0.046,0.141
+# of qualifying teeth ,0.011,0.064,0.102,0.038
+Whole-mouth average gingival index,0.173,0.085,0.157,0.144
+"Fraction of sites bleeding
+on probing ",0.057,0.009,0.001,0.075
+Whole-mouth average pocket depth,0.064,0.009,0.017,0.116
+Whole-mouth average clinical attachment level ,0.176,0.007,0.019,0.142
+Whole-mouth average calculus index,0.066,0.015,0.084,0.11
+Whole-mouth average plaque index ,0.111,0.019,0.056,0.117
