@@ -505,7 +505,7 @@ for (i in 1:B) {
     Hypertension + Diabetes + Any.live.ptb.sb.sp.ab.in.ab + BL.GE + 
     BL.Pl.I + Group:Black + Group:White + Group:Nat.Am + Group:Education + 
     Group:Hypertension, data = opt.boot, family = "binomial")
-  ps.boot <- predict(p1.boot, type = "response")
+  ps.boot <- predict(p1.boot, type = "response", newdata = opt.boot)
   ps_quintile.boot <- cut(ps.boot, 
 	breaks = c(0, quantile(ps.boot[opt.boot$group_num == 1], p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5)
   nA.boot <- nrow(opt.boot[opt.boot$group_num == 1, ])
@@ -536,7 +536,6 @@ te_quintile <- tapply(opt_causal$birthweight_imputed[opt_causal$Group == "T"], p
 ATT_PSS <- sum(te_quintile * nAj / nA)
 print(round(ATT_PSS, 3))
 
-# **** Problem
 set.seed(2321)
 B <- 100
 ATT_PSS.boot <- NULL
@@ -551,7 +550,7 @@ for (i in 1:B) {
     Group:White + Group:Nat.Am + Group:bmi_imputed + Group:Hypertension + 
     Group:cigday_imputed + Group:I(cigday_imputed^2) + Group:Any.live.ptb.sb.sp.ab.in.ab + 
     Group:I(BL..BOP^2) + Group:BL.PD.avg + Group:BL.CAL.avg, data = opt.boot, family = "gaussian")
-  ps.boot <- predict(p1.boot, type = "response")
+  ps.boot <- predict(p1.boot, type = "response", newdata = opt.boot)
   ps_quintile.boot <- cut(ps.boot, 
 	breaks = c(0, quantile(ps.boot[opt.boot$group_num == 1], p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5) # getting NAs in this part
   nA.boot <- nrow(opt.boot[opt.boot$group_num == 1, ])
