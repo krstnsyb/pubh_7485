@@ -151,7 +151,7 @@ m1 <- glm(Preg.ended ~ Group + Black + White + Nat.Am + Education +
     Group:Hypertension, data = opt_causal, family = "binomial")
 
 # Set up ps and weights
-ps <- predict(p1, type = "response")
+ps <- predict(p1, type = "response", newdata = opt_causal)
 w1 <- opt_causal$group_num / ps
 w0 <- (1 - opt_causal$group_num) / (1 - ps)
 
@@ -482,6 +482,12 @@ CI.ps
 # PSS
 # Propensity score stratification: Form strata using quintiles of ps in TREATED GROUP. Weight by nAj/nA where nA is number in treated group and nAj is number of treated in stratum j.
 
+summary(ps_quintile)
+mean(opt_causal$Preg.ended[opt_causal$Group == "T"])
+mean(opt_causal$Preg.ended[opt_causal$Group == "T"])
+mean(ps_quintile[opt_causal$Group == "C"])
+
+
 # Pregnancy ended
 ps_quintile <- cut(ps,
   breaks = c(0, quantile(ps[opt_causal$Group == "T"], p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
@@ -526,6 +532,7 @@ CI_PSS <- ATT_PSS + c(-1, 1) * qnorm(0.975) * SE_PSS
 
 
 # Birth weight
+ps <- predict(p1, type = "response", newdata = opt_causal)
 ps_quintile <- cut(ps,
   breaks = c(0, quantile(ps[opt_causal$Group == "T"], p = c(0.2, 0.4, 0.6, 0.8)), 1), labels = 1:5
 )
@@ -568,6 +575,10 @@ print(SE_PSS, digits = 3)
 print("Bootstrap Normal 95% CI")
 print(ATT_PSS + c(-1, 1) * qnorm(0.975) * SE_PSS, digits = 3)
 CI_PSS <- ATT_PSS + c(-1, 1) * qnorm(0.975) * SE_PSS
+
+
+
+
 ```
 
 
@@ -711,7 +722,7 @@ print("1:1 Match ATT")
 ATT1match <- p1_m - p0_m
 print(p1_m - p0_m, digits = 3)
 print("Standard Error")
-SE <- sqrt(p1_m*(1-p1_m)/n1 + p0_m*(1-p0_m)/n0) # negative
+SE <- sqrt(p1_m*(1-p1_m)/n1 + p0_m*(1-p0_m)/n0) # do t-test?
 print(SE, digits = 3)
 print("95% CI")
 CI1match <- p1_m - p0_m + c(-1, 1) * qnorm(0.975) * SE
@@ -743,13 +754,11 @@ For the propensity score matching use tabular and graphical diagnostics to asses
 ## Graphically Assess Matching
 ```{r, echo = TRUE}
 plot(mod_match_1, type = "hist")
-plot(mod_match_2, type = "hist")
 ```
 
 ## Graphically Assess Matching
 ```{r, echo = TRUE}
-plot(mod_match_1, type = "QQ", which.xs = c("Age"))
-plot(mod_match_2, type = "QQ", which.xs = c("Age"))
+plot(mod_match_1, type = "QQ", which.xs = c("cigday_imputed", "BL.PD.avg", "BL.CAL.avg"))
 
 ```
 
