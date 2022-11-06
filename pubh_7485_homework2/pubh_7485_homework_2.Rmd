@@ -150,7 +150,7 @@ opt_causal %>%
 ## Get propensity scores
 ```{r warning = FALSE, message = FALSE}
 # Create propensity models
-# Llogistic main effects
+# Logistic main effects
 p1 <- glm(Group ~ (Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + BMI + Hypertension + Diabetes + BL.Cig.Day + BL.Drks.Day + N.prev.preg + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_causal, family = "binomial")
 round(summary(p1)$coefficients, digits = 3)
 

@@ -1,0 +1,319 @@
+---
+title: 'PUBH 7485 Homework 4'
+output: 
+  github_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(here)
+library(mediation)
+library(ranger)
+library(rpart)
+library(rpart.plot)
+
+options(scipen = 999)
+options(digits = 3)
+```
+
+```{r warning = FALSE, message = FALSE}
+# Read in data
+load(here("data", "OPT_Study_Mediation_PUBH7485_8485_v2.Rdata"))
+```
+
+## Impute
+```{r warning = FALSE, message = FALSE}
+# Impute continuous data
+# Calculate medians
+median_bmi <- median(opt_mediation$BMI, na.rm = TRUE)
+median_cigday <- median(opt_mediation$BL.Cig.Day, na.rm = TRUE)
+median_drinksday <- median(opt_mediation$BL.Drks.Day, na.rm = TRUE)
+median_prevpreg <- median(opt_mediation$N.prev.preg, na.rm = TRUE)
+median_livingkids <- median(opt_mediation$N.living.kids, na.rm = TRUE)
+median_birthweight <- median(opt_mediation$Birthweight, na.rm = TRUE)
+median_V5..BOP <- median(opt_mediation$V5..BOP, na.rm = TRUE)
+
+# Create new imputed columns
+opt_mediation$bmi_imputed <- ifelse(is.na(opt_mediation$BMI), median_bmi, opt_mediation$BMI)
+opt_mediation$cigday_imputed <- ifelse(is.na(opt_mediation$BL.Cig.Day), median_cigday,
+  opt_mediation$BL.Cig.Day
+)
+opt_mediation$drinksday_imputed <- ifelse(is.na(opt_mediation$BL.Drks.Day),
+  median_drinksday, opt_mediation$BL.Drks.Day
+)
+opt_mediation$prevpreg_imputed <- ifelse(is.na(opt_mediation$N.prev.preg),
+  median_prevpreg, opt_mediation$N.prev.preg
+)
+opt_mediation$livingkids_imputed <- ifelse(is.na(opt_mediation$N.living.kids),
+  median_livingkids, opt_mediation$N.living.kids
+)
+opt_mediation$birthweight_imputed <- ifelse(is.na(opt_mediation$Birthweight),
+  median_birthweight, opt_mediation$Birthweight
+)
+opt_mediation$V5..BOP_imputed <- ifelse(is.na(opt_mediation$V5..BOP),
+  median_V5..BOP, opt_mediation$V5..BOP
+)
+opt_mediation <- opt_mediation %>%
+  fill(Any.live.ptb.sb.sp.ab.in.ab, .direction = "downup")
+
+# Impute categorical data
+# Create new imputed columns
+opt_mediation$hisp_imputed <- ifelse(is.na(opt_mediation$Hisp), "Yes", opt_mediation$Hisp)
+opt_mediation$diabtype_imputed <- ifelse(is.na(opt_mediation$BL.Diab.Type), "Type II",
+  opt_mediation$BL.Diab.Type
+)
+opt_mediation$tobuse_imputed <- ifelse(is.na(opt_mediation$Use.Tob), "No", opt_mediation$Use.Tob)
+opt_mediation$alcuse_imputed <- ifelse(is.na(opt_mediation$Use.Alc), "No", opt_mediation$Use.Alc)
+opt_mediation$addiction_imputed <- ifelse(is.na(opt_mediation$Drug.Add), "No", opt_mediation$Drug.Add)
+
+
+
+# Create change in proportion of sites that bleed variable
+opt_mediation <- opt_mediation %>%
+  mutate(BOP_change = (V5..BOP_imputed - BL..BOP))
+
+# Create numeric group
+opt_mediation <- opt_mediation %>%
+  mutate(group_num = fct_recode(Group,
+    "1" = "T",
+    "0" = "C"
+  )) %>%
+  mutate(group_num = as.numeric(as.character(group_num)))
+
+```
+
+
+## Question 1: Mediation analysis
+### a. Mediator model 
+
+```{r, echo = FALSE}
+mediator <- lm(BOP_change ~ Group + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation)
+round(summary(mediator)$coefficients, digits = 3)
+```
+
+###b. Outcome model with mediator
+
+```{r, echo = FALSE, warning = FALSE, message=FALSE}
+outcome <- lm(birthweight_imputed ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation)
+round(summary(outcome)$coefficients, digits = 3)
+```
+
+
+###c. Calculating CDE and NIE
+
+```{r warning = FALSE, message = FALSE}
+# 7 is the treatment*mediator interaction (13 in mine)
+# 2 is the treatment parameter
+# 3 is the mediator parameter
+# CDE
+CDE <- outcome$coefficients[2] + outcome$coefficients[13]
+CDE
+
+# NIE
+opt_mediation0 <- opt_mediation
+opt_mediation0$group_num <- 0
+NIE <- outcome$coefficients[3] * mediator$coefficients[2] +
+  outcome$coefficients[13] * mediator$coefficients[2]
+NIE
+
+# Note - the group has to be numeric
+```
+
+
+```{r, echo = TRUE, cache = TRUE}
+# Bootstrap for SE and CI
+n <- nrow(opt_mediation)
+CDE.boot <- NULL
+NIE.boot <- NULL
+B <- 100
+set.seed((2123))
+for (i in 1:B) {
+  opt_mediation.boot <- opt_mediation[sample(1:n, n, replace = TRUE), ]
+  outcome.boot <- lm(birthweight_imputed ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation.boot)
+  mediator.boot <- lm(BOP_change ~ Group + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation.boot)
+  opt_mediation0.boot <- opt_mediation.boot
+  opt_mediation0.boot$group_num <- 0
+  CDE.boot <- c(
+    CDE.boot,
+    outcome.boot$coefficients[2] + outcome.boot$coefficients[13]
+  )
+  NIE.boot <- c(
+    NIE.boot,
+     outcome.boot$coefficients[3] * mediator.boot$coefficients[2] + 
+      outcome.boot$coefficients[13] * mediator.boot$coefficients[2]
+  )
+}
+```
+
+
+```{r, echo = FALSE}
+# Results
+CDE
+SE_CDE <- sd(CDE.boot)
+SE_CDE
+CI_CDE <- CDE + c(-1, 1)*qnorm(0.975)*SE_CDE
+CI_CDE
+
+
+NIE
+SE_NIE <- sd(NIE.boot) 
+SE_NIE
+CI_NIE <- NIE + c(-1, 1)*qnorm(0.975)*SE_NIE
+CI_NIE
+```
+
+
+## Question 2: 
+
+Fit flexible regression models for the birthweight and whether or not the pregnancy ended before 37 weeks outcomes in the OPT study, and find the estimated optimal treatment rule. 
+
+```{r warning = FALSE, message = FALSE}
+# Regression Output - birthweight
+m1 <- glm(birthweight_imputed ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_mediation, family = "gaussian")
+round(summary(m1)$coefficients, digits = 3)
+
+# Regression Output - pregnancy 
+m3 <- glm(Preg.ended...37.wk ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_mediation, family = "binomial")
+round(summary(m3)$coefficients, digits = 3)
+```
+
+Please summarize the proportion who would benefit from treatment.
+
+```{r warning = FALSE, message = FALSE}
+# Determine Optimal Treatment Assignment for Each Subject
+# Note: does not work well with the group_num variable - must be a factor?
+# Birth weight
+data_trt <- data_ctr <- opt_mediation
+data_trt$Group = "T"
+data_ctr$Group = "C"
+pred1 <- predict(m1, newdata = data_trt, type = "response")
+pred0 <- predict(m1, newdata = data_ctr, type = "response")
+opt_treat <- ifelse(pred1 > pred0, 1, 0)
+table(opt_treat)
+
+# Pregnancy ended
+data_trt <- data_ctr <- opt_mediation
+data_trt$Group = "T"
+data_ctr$Group = "C"
+pred1 <- predict(m3, newdata = data_trt, type = "response")
+pred0 <- predict(m3, newdata = data_ctr, type = "response")
+opt_treat <- ifelse(pred1 > pred0, 1, 0)
+
+table(opt_treat)
+```
+
+Write a simple piece of code which would return the optimal treatment decision for a given set of covariates. 
+
+```{r, echo = TRUE, warning = FALSE}
+# Birth weight
+# Create variable for select covariates: a baseline fraction of bleeding when probed greater than/equal to 60 and age greater than/equal to 30
+opt_g <- opt_mediation %>%
+  mutate(Group = if_else(BL..BOP >= 60 & Age >= 30, 1, 0),
+           Group = as.factor(Group)
+         )
+
+m1 <- glm(birthweight_imputed ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_g, family = "gaussian")
+
+data_trt <- data_ctr <- opt_g
+data_trt$Group = "1"
+data_ctr$Group = "0"
+pred1 <- predict(m1, newdata = data_trt, type = "response")
+pred0 <- predict(m1, newdata = data_ctr, type = "response")
+opt_treat <- ifelse(pred1 > pred0, 1, 0)
+table(opt_treat)
+
+# Is treatment optimal for individuals with the given covariates?
+isTRUE(mean(pred1) > mean(pred0))
+
+
+# Pregnancy ended
+m3 <- glm(Preg.ended...37.wk ~ Group*(Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I), data = opt_g, family = "binomial")
+
+data_trt <- data_ctr <- opt_g
+data_trt$Group = "1"
+data_ctr$Group = "0"
+pred1 <- predict(m3, newdata = data_trt, type = "response")
+pred0 <- predict(m3, newdata = data_ctr, type = "response")
+opt_treat <- ifelse(pred1 > pred0, 1, 0)
+table(opt_treat)
+
+# Is treatment optimal for individuals with the given covariates?
+isTRUE(mean(pred0) > mean(pred1))
+
+```
+
+## Question 3. C-learning 
+
+Taking a classification-learning (C-learning) perspective, estimate an optimal “decision list” treatment rule for each outcome in the OPT study. 
+
+### Birthweight
+
+- Step 1a: Fit a random forest to estimate $E(Y|A, X) = \mu(A, X)$
+
+```{r, echo = TRUE, warning = FALSE}
+data_trt_only <- opt_mediation[which(opt_mediation$Group == "T"), ]
+data_ctr_only <- opt_mediation[which(opt_mediation$Group == "C"), ]
+m1_treat <- ranger(birthweight_imputed ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = data_trt_only, seed = 2123, probability = TRUE)
+m1_ctr <- ranger(birthweight_imputed ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = data_ctr_only, seed = 2123, probability = TRUE)
+```
+
+- Step 1b: Estimate the conditional average treatment effect as $Z_i = \hat{\mu}(1, X_i) - \hat{\mu}(0, X_i)$
+
+```{r, echo = TRUE}
+pred1 <- predict(m1_treat, data = data_trt)$predictions[, 2]
+pred1[opt_mediation$Group == "T"] <- m1_treat$predictions[, 2]
+pred0 <- predict(m1_ctr, data = data_ctr)$predictions[, 2]
+pred0[opt_mediation$Group == "C"] <- m1_ctr$predictions[, 2]
+opt_mediation$Z <- pred1 - pred0
+```
+
+Step 2:
+
+```{r, fig.height=3, echo = TRUE}
+opt_mediation$Z_label <- ifelse(opt_mediation$Z > 0, 1, 0)
+opt_mediation$Z_weight <- abs(opt_mediation$Z)
+fit <- rpart(Z_label ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, 
+	data = opt_mediation, weights = Z_weight,
+	maxdepth = 3); rpart.plot(fit)
+
+install.packages("rpart.plot")
+library(rpart.plot)
+```
+
+
+### Pregnancy ended
+
+- Step 1a: Fit a random forest to estimate $E(Y|A, X) = \mu(A, X)$
+
+```{r, echo = TRUE, warning = FALSE}
+data_trt_only <- opt_mediation[which(opt_mediation$Group == "T"), ]
+data_ctr_only <- opt_mediation[which(opt_mediation$Group == "C"), ]
+m1_treat <- ranger(factor(Preg.ended...37.wk) ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = data_trt_only, seed = 2123, probability = TRUE)
+m1_ctr <- ranger(factor(Preg.ended...37.wk) ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = data_ctr_only, seed = 2123, probability = TRUE)
+```
+
+- Step 1b: Estimate the conditional average treatment effect as $Z_i = \hat{\mu}(1, X_i) - \hat{\mu}(0, X_i)$
+
+```{r, echo = TRUE}
+pred1 <- predict(m1_treat, data = data_trt)$predictions[, 2]
+pred1[opt_mediation$Group == "T"] <- m1_treat$predictions[, 2]
+pred0 <- predict(m1_ctr, data = data_ctr)$predictions[, 2]
+pred0[opt_mediation$Group == "C"] <- m1_ctr$predictions[, 2]
+opt_mediation$Z <- pred1 - pred0
+```
+
+Step 2:
+
+```{r, fig.height=3, echo = TRUE}
+opt_mediation$Z_label <- ifelse(opt_mediation$Z > 0, 1, 0)
+opt_mediation$Z_weight <- abs(opt_mediation$Z)
+fit <- rpart(Z_label ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, 
+	data = opt_mediation, weights = Z_weight,
+	maxdepth = 3); rpart.plot(fit)
+
+install.packages("rpart.plot")
+
+```
