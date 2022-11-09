@@ -83,47 +83,59 @@ opt_mediation <- opt_mediation %>%
   )) %>%
   mutate(group_num = as.numeric(as.character(group_num)))
 
+# Find median of mediator
+median(opt_mediation$BOP_change)
+# -7
+
 ```
 
 
 ## Question 1: Mediation analysis
 ### a. Mediator model 
 
-```{r, echo = FALSE}
+```{r warning = FALSE, message = FALSE}
 mediator <- lm(BOP_change ~ Group + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation)
 round(summary(mediator)$coefficients, digits = 3)
 ```
 
 ###b. Outcome model with mediator
 
-```{r, echo = FALSE, warning = FALSE, message=FALSE}
-outcome <- lm(birthweight_imputed ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation)
-round(summary(outcome)$coefficients, digits = 3)
+```{r warning = FALSE, message = FALSE}
+outcome_bw <- lm(birthweight_imputed ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation)
+round(summary(outcome_bw)$coefficients, digits = 3)
+
+outcome_preg <- glm(Preg.ended...37.wk ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation, family = binomial)
+round(summary(outcome_preg)$coefficients, digits = 3)
+
 ```
 
 
 ###c. Calculating CDE and NIE
 
+#### Birthweight
 ```{r warning = FALSE, message = FALSE}
 # 7 is the treatment*mediator interaction (13 in mine)
 # 2 is the treatment parameter
 # 3 is the mediator parameter
+# Note: NDE + NIE should be close to ATE
 # CDE
-CDE <- outcome$coefficients[2] + outcome$coefficients[13]
+CDE <- outcome_bw$coefficients[2] + (outcome_bw$coefficients[13]*-7)
 CDE
+
+### Add mean or median of the mediator value...
 
 # NIE
 opt_mediation0 <- opt_mediation
 opt_mediation0$group_num <- 0
-NIE <- outcome$coefficients[3] * mediator$coefficients[2] +
-  outcome$coefficients[13] * mediator$coefficients[2]
+NIE <- outcome_bw$coefficients[3] * mediator$coefficients[2] +
+  outcome_bw$coefficients[13] * mediator$coefficients[2]
 NIE
 
 # Note - the group has to be numeric
 ```
 
 
-```{r, echo = TRUE, cache = TRUE}
+```{r warning = FALSE, message = FALSE}
 # Bootstrap for SE and CI
 n <- nrow(opt_mediation)
 CDE.boot <- NULL
@@ -138,7 +150,7 @@ for (i in 1:B) {
   opt_mediation0.boot$group_num <- 0
   CDE.boot <- c(
     CDE.boot,
-    outcome.boot$coefficients[2] + outcome.boot$coefficients[13]
+    outcome.boot$coefficients[2] + (outcome.boot$coefficients[13]*-7)
   )
   NIE.boot <- c(
     NIE.boot,
@@ -149,7 +161,7 @@ for (i in 1:B) {
 ```
 
 
-```{r, echo = FALSE}
+```{r warning = FALSE, message = FALSE}
 # Results
 CDE
 SE_CDE <- sd(CDE.boot)
@@ -164,6 +176,74 @@ SE_NIE
 CI_NIE <- NIE + c(-1, 1)*qnorm(0.975)*SE_NIE
 CI_NIE
 ```
+
+#### Pregnancy ended
+```{r warning = FALSE, message = FALSE}
+# 7 is the treatment*mediator interaction (13 in mine)
+# 2 is the treatment parameter
+# 3 is the mediator parameter
+# if treatment*covariate interactions: add an additional term which is the expected value of the covariates
+
+# Note: NDE + NIE should be close to ATE
+# CDE
+CDE <- outcome_preg$coefficients[2] + (outcome_preg$coefficients[13]*-7)
+CDE
+
+### Add mean or median of the mediator value...
+
+# NIE
+opt_mediation0 <- opt_mediation
+opt_mediation0$group_num <- 0
+NIE <- outcome_preg$coefficients[3] * mediator$coefficients[2] +
+  outcome_preg$coefficients[13] * mediator$coefficients[2]
+NIE
+
+# Note - the group has to be numeric
+```
+
+
+```{r warning = FALSE, message = FALSE}
+# Bootstrap for SE and CI
+n <- nrow(opt_mediation)
+CDE.boot <- NULL
+NIE.boot <- NULL
+B <- 100
+set.seed((2123))
+for (i in 1:B) {
+  opt_mediation.boot <- opt_mediation[sample(1:n, n, replace = TRUE), ]
+  outcome.boot <- glm(Preg.ended...37.wk ~ Group + BOP_change + Group:BOP_change + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation.boot, family = binomial())
+  mediator.boot <- lm(BOP_change ~ Group + White + Nat.Am + Diabetes + cigday_imputed + Any.live.ptb.sb.sp.ab.in.ab + BL.PD.avg + I(BL.PD.avg^2) + BL.CAL.avg + I(BL.CAL.avg^2), data = opt_mediation.boot)
+  opt_mediation0.boot <- opt_mediation.boot
+  opt_mediation0.boot$group_num <- 0
+  CDE.boot <- c(
+    CDE.boot,
+    outcome.boot$coefficients[2] + (outcome.boot$coefficients[13]*-7)
+  )
+  NIE.boot <- c(
+    NIE.boot,
+     outcome.boot$coefficients[3] * mediator.boot$coefficients[2] + 
+      outcome.boot$coefficients[13] * mediator.boot$coefficients[2]
+  )
+}
+```
+
+
+```{r warning = FALSE, message = FALSE}
+# Results
+CDE
+SE_CDE <- sd(CDE.boot)
+SE_CDE
+CI_CDE <- CDE + c(-1, 1)*qnorm(0.975)*SE_CDE
+CI_CDE
+
+
+NIE
+SE_NIE <- sd(NIE.boot) 
+SE_NIE
+CI_NIE <- NIE + c(-1, 1)*qnorm(0.975)*SE_NIE
+CI_NIE
+```
+
 
 
 ## Question 2: 
@@ -207,7 +287,7 @@ table(opt_treat)
 
 Write a simple piece of code which would return the optimal treatment decision for a given set of covariates. 
 
-```{r, echo = TRUE, warning = FALSE}
+```{r warning = FALSE, message = FALSE}
 # Birth weight
 # Create variable for select covariates: a baseline fraction of bleeding when probed greater than/equal to 60 and age greater than/equal to 30
 opt_g <- opt_mediation %>%
@@ -253,7 +333,7 @@ Taking a classification-learning (C-learning) perspective, estimate an optimal â
 
 - Step 1a: Fit a random forest to estimate $E(Y|A, X) = \mu(A, X)$
 
-```{r, echo = TRUE, warning = FALSE}
+```{r warning = FALSE, message = FALSE}
 data_trt_only <- opt_mediation[which(opt_mediation$Group == "T"), ]
 data_ctr_only <- opt_mediation[which(opt_mediation$Group == "C"), ]
 m1_treat <- ranger(birthweight_imputed ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, data = data_trt_only, seed = 2123, probability = TRUE)
@@ -262,7 +342,7 @@ m1_ctr <- ranger(birthweight_imputed ~ Clinic + Age + Black + White + Nat.Am + E
 
 - Step 1b: Estimate the conditional average treatment effect as $Z_i = \hat{\mu}(1, X_i) - \hat{\mu}(0, X_i)$
 
-```{r, echo = TRUE}
+```{r warning = FALSE, message = FALSE}
 pred1 <- predict(m1_treat, data = data_trt)$predictions[, 2]
 pred1[opt_mediation$Group == "T"] <- m1_treat$predictions[, 2]
 pred0 <- predict(m1_ctr, data = data_ctr)$predictions[, 2]
@@ -278,9 +358,6 @@ opt_mediation$Z_weight <- abs(opt_mediation$Z)
 fit <- rpart(Z_label ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, 
 	data = opt_mediation, weights = Z_weight,
 	maxdepth = 3); rpart.plot(fit)
-
-install.packages("rpart.plot")
-library(rpart.plot)
 ```
 
 
@@ -297,7 +374,7 @@ m1_ctr <- ranger(factor(Preg.ended...37.wk) ~ Clinic + Age + Black + White + Nat
 
 - Step 1b: Estimate the conditional average treatment effect as $Z_i = \hat{\mu}(1, X_i) - \hat{\mu}(0, X_i)$
 
-```{r, echo = TRUE}
+```{r warning = FALSE, message = FALSE}
 pred1 <- predict(m1_treat, data = data_trt)$predictions[, 2]
 pred1[opt_mediation$Group == "T"] <- m1_treat$predictions[, 2]
 pred0 <- predict(m1_ctr, data = data_ctr)$predictions[, 2]
@@ -313,7 +390,5 @@ opt_mediation$Z_weight <- abs(opt_mediation$Z)
 fit <- rpart(Z_label ~ Clinic + Age + Black + White + Nat.Am + Education + Public.Asstce + bmi_imputed + Hypertension + Diabetes + cigday_imputed + drinksday_imputed + prevpreg_imputed + Any.live.ptb.sb.sp.ab.in.ab + N.qualifying.teeth + BL.GE + BL..BOP + BL.PD.avg + BL.CAL.avg + BL.Calc.I + BL.Pl.I, 
 	data = opt_mediation, weights = Z_weight,
 	maxdepth = 3); rpart.plot(fit)
-
-install.packages("rpart.plot")
 
 ```
